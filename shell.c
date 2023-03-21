@@ -13,7 +13,7 @@
 	https://man7.org/linux/man-pages/man2/chdir.2.html,
 	https://man7.org/linux/man-pages/man3/getcwd.3.html,
 	https://man7.org/linux/man-pages/man3/exit.3.html,
-	https://man7.org/linux/man-pages/man2/dup.2.html,
+	https://man7.org/linux/man-pages/man3/fopen.3.html,
 	https://linux.die.net/man/3/strcat,
 	https://linux.die.net/man/3/strcmp
 */
@@ -128,8 +128,8 @@ void execArgs(char ** argsArr) {
 	} else if (strcmp(firstArg, "exit") == 0) {
 		exit(0);
 
-	// } else if (strcmp(firstArg, "cat") == 0) {
-	// 	cat(argsArr[1]);
+	} else if (strcmp(firstArg, "cat") == 0) {
+		cat(argsArr[1]);
 
 	} else { // we attempt an exec call of the arguments
 		execChildArgs(argsArr);
@@ -187,4 +187,25 @@ char * getAbsolutePath(char * path) {
 	} 
 	return path;
 
+}
+
+/* Function that prints out file to stdout
+*/
+
+void cat(char * path) {
+	path = getAbsolutePath(path);
+	FILE * fp;
+	fp = fopen(path, "r");
+
+	if (fp == NULL) {
+		printf("File not found.\n");
+		return;
+	}
+
+	int lineLen = 240;
+	char temp[lineLen];
+	while (fgets(temp, lineLen, fp) != NULL) {
+		printf("%s", temp);
+	} 
+	fclose(fp);
 }
