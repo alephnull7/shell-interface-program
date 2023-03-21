@@ -38,9 +38,8 @@ char * getInput(void);
 char ** getArgs(char *);
 void execArgs(char **);
 void execChildArgs(char **);
-void cd(char *);
+void cd(char **);
 char * getAbsolutePath(char *);
-void cat(char *);
 
 
 int main(void) {
@@ -115,21 +114,10 @@ void execArgs(char ** argsArr) {
 	char * firstArg = argsArr[0];
 
 	if (strcmp(firstArg, "cd") == 0) {
-		if (argsArr[1] != NULL) {
-			char * path;
-			path = getAbsolutePath(argsArr[1]);
-			chdir(path);
-
-		} else {
-			printf("Unable to change directory.\n");
-
-		}
+		cd(argsArr);
 
 	} else if (strcmp(firstArg, "exit") == 0) {
 		exit(0);
-
-	} else if (strcmp(firstArg, "cat") == 0) {
-		cat(argsArr[1]);
 
 	} else { // we attempt an exec call of the arguments
 		execChildArgs(argsArr);
@@ -184,23 +172,17 @@ char * getAbsolutePath(char * path) {
 
 }
 
-/* Function that prints out file to stdout
+/* Function that changes process cwd
 */
 
-void cat(char * path) {
-	path = getAbsolutePath(path);
-	FILE * fp;
-	fp = fopen(path, "r");
+void cd(char ** argsArr) {
+	if (argsArr[1] != NULL) {
+		char * path;
+		path = getAbsolutePath(argsArr[1]);
+		chdir(path);
 
-	if (fp == NULL) {
-		printf("File not found.\n");
-		return;
+	} else {
+		printf("Unable to change directory.\n");
+
 	}
-
-	int lineLen = 240;
-	char temp[lineLen];
-	while (fgets(temp, lineLen, fp) != NULL) {
-		printf("%s", temp);
-	} 
-	fclose(fp);
 }
