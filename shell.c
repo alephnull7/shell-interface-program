@@ -149,11 +149,6 @@ void execChildArgs(char ** argsArr) {
 	child = fork();
 
 	if (child == 0) { // child process
-		if (strcmp(argsArr[0], "cat") == 0) {
-			char * path = getAbsolutePath(argsArr[1]);
-			execl("/bin/cat", path, (char *) NULL);
-		}
-
 		// since we are not addressing the file by filepath we use 'p'
 		// since the arguments are in the form of an array we use 'v'
 		execvp(argsArr[0], argsArr);
