@@ -161,12 +161,12 @@ char * getAbsolutePath(char * path) {
 	if (path[0] != '/') { // relative path
 		// allocate space for cwd and retrieve
 		char cwd[120];
-        getcwd(cwd, sizeof(cwd));
-        // make relative path ready for concat
-        strcat(cwd, "/");
-        // make full path
-        strcat(cwd, path);
-        strcpy(path, cwd);
+		getcwd(cwd, sizeof(cwd));
+		// make relative path ready for concat
+		strcat(cwd, "/");
+		// make full path
+		strcat(cwd, path);
+		strcpy(path, cwd);
 	} 
 	return path;
 
