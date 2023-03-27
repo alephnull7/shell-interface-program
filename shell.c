@@ -183,7 +183,7 @@ void cd(char ** argsArr) {
 			printf("Unable to change directory.\n");
 
 		} else {
-			printf("Directory changed to %s.\n", path);
+			printf("Directory changed.\n");
 
 		}
 
