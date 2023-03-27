@@ -179,7 +179,13 @@ void cd(char ** argsArr) {
 	if (argsArr[1] != NULL) {
 		char * path;
 		path = getAbsolutePath(argsArr[1]);
-		chdir(path);
+		if ( chdir(path) == -1 ) {
+			printf("Unable to change directory.\n");
+
+		} else {
+			printf("Directory changed.\n");
+
+		}
 
 	} else {
 		printf("Unable to change directory.\n");
