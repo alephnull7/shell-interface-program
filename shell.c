@@ -14,6 +14,8 @@
 	https://man7.org/linux/man-pages/man3/getcwd.3.html,
 	https://man7.org/linux/man-pages/man3/exit.3.html,
 	https://man7.org/linux/man-pages/man3/fopen.3.html,
+	https://man7.org/linux/man-pages/man2/dup.2.html,
+	https://man7.org/linux/man-pages/man2/open.2.html,
 	https://linux.die.net/man/3/strcat,
 	https://linux.die.net/man/3/strcmp
 */
@@ -21,7 +23,7 @@
 /* Purpose:
 	This program recreates some basic shell functionality, including
 	direct system calls with exec as well as some defined functions
-	to recreate some other expected commands such as cat, cd, and exit
+	to recreate some other expected commands such as cd and exit
 */
 
 
@@ -31,6 +33,7 @@
 #include <stdlib.h> // needed for malloc(), free(), exit()
 #include <sys/wait.h> // needed for waitpid()
 #include <unistd.h> // needed for execvp(), fork(), chdir(), dup2()
+#include <fcntl.h> // needed for open()
 
 
 /* Prototypes */
