@@ -93,15 +93,38 @@ char ** getArgs(char * input) {
 	// let us use the default buffer size of getline(), 120, as a baseline
 	// TODO: have buffer dynamically expand
 	char ** tokenArr = malloc(sizeof(char) * 120);
+	// since the heap may be modified, we default redirects to NULL
+	// in case they are not assigned in the command
+	tokenArr[0] = NULL;
+	tokenArr[1] = NULL;
 
 	// by implementation getline() will result in \n terminated string
-	const char delim[2] = " \n";
+	char delim[] = " \n";
 
 	// we iterate through all of the tokens and put them in the 2-d array
 	char * token = strtok(input, delim);
-	int index = 0;
+	int argIndex = 2; // first two elements are reserved for in and out redirect
+	int type = 0;
 	while (token != NULL ) {
-		tokenArr[index++] = token;
+		if ('<' == *token) {
+			type = 1;
+
+		} else if ('>' == *token) {
+			type = 2;
+
+		} else if (type == 0) {
+			tokenArr[argIndex++] = token;
+
+		} else if (type == 1) {
+			tokenArr[0] = token;
+			type = 0;
+
+		} else if (type == 2) {
+			tokenArr[1] = token;
+			type = 0;
+
+		}
+
 		// go to next token
 		token = strtok(NULL, delim);
 	}
@@ -114,7 +137,7 @@ char ** getArgs(char * input) {
 */
 
 void execArgs(char ** argsArr) {
-	char * firstArg = argsArr[0];
+	char * firstArg = argsArr[2];
 
 	if (strcmp(firstArg, "cd") == 0) {
 		cd(argsArr);
@@ -140,9 +163,22 @@ void execChildArgs(char ** argsArr) {
 	child = fork();
 
 	if (child == 0) { // child process
+		// child I/0 redirection
+		int redirIndex;
+		char * redirFd;
+		for (redirIndex = 0; redirIndex < 2; redirIndex++) {
+			if ( (redirFd = argsArr[redirIndex]) != NULL ) {
+				int fd = open(argsArr[redirIndex], O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+				dup2(fd, redirIndex);
+				close(fd);
+			}
+		}
+
 		// since we are not addressing the file by filepath we use 'p'
 		// since the arguments are in the form of an array we use 'v'
-		execvp(argsArr[0], argsArr);
+		// the first two elements are possible redirection, so the command is second element
+		// and for the second argument we want all elements except first two
+		execvp(argsArr[2], argsArr+2);
 
 		// we only return upon failure of exec
 		printf("Command not found.\nExecution unsuccessful.\n");
@@ -175,13 +211,14 @@ char * getAbsolutePath(char * path) {
 
 }
 
+
 /* Function that changes process cwd
 */
 
 void cd(char ** argsArr) {
-	if (argsArr[1] != NULL) {
+	if (argsArr[3] != NULL) {
 		char * path;
-		path = getAbsolutePath(argsArr[1]);
+		path = getAbsolutePath(argsArr[3]);
 		if ( chdir(path) == -1 ) {
 			printf("Unable to change directory.\n");
 
