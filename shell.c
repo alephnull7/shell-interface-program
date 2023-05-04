@@ -32,15 +32,15 @@
 #include <string.h> // needed for strtok(), strcmp()
 #include <stdlib.h> // needed for malloc(), free(), exit()
 #include <sys/wait.h> // needed for waitpid()
-#include <unistd.h> // needed for execvp(), fork(), chdir(), dup2()
+#include <unistd.h> // needed for execvp(), fork(), chdir(), dup2(), pipe(), write(), read()
 #include <fcntl.h> // needed for open()
 
 
 /* Prototypes */
 char * getInput(void);
-char ** getArgs(char *);
-void execArgs(char **);
-void execChildArgs(char **);
+void getArgs(char *, char **, char **, int *, int *);
+void execArgs(char **, char **, int *, int);
+void execChildArgs(char **, char **, int *, int);
 void cd(char **);
 char * getAbsolutePath(char *);
 
@@ -48,20 +48,30 @@ char * getAbsolutePath(char *);
 int main(void) {
 	char * input;
 	char ** argsArr;
+	char ** redirArr;
+	int * cmdIndexArr;
+	int cmdCount;
 
 	while (1) {
 		// allocate and populate input command in buffer
 		input = getInput();
 
 		// retrieve split of input for execution
-		argsArr = getArgs(input);
+		// let us use the default buffer size of getline(), 120, as a baseline
+		// TODO: have buffer dynamically expand like vector/arraylist
+		argsArr = malloc(sizeof(char) * 120);
+		redirArr = malloc(sizeof(char) * 120);
+		cmdIndexArr = malloc(sizeof(int) * 60);
+		getArgs(input, argsArr, redirArr, cmdIndexArr, &cmdCount);
 
 		// attempt execution
-		execArgs(argsArr);
+		execArgs(argsArr, redirArr, cmdIndexArr, cmdCount);
 
 		// free buffered variables
 		free(input);
 		free(argsArr);
+		free(redirArr);
+		free(cmdIndexArr);
 
 		printf("\n");
 	}	
@@ -89,38 +99,50 @@ char * getInput(void) {
 /* Function returns tokenized array of strings
 */
 
-char ** getArgs(char * input) {
-	// let us use the default buffer size of getline(), 120, as a baseline
-	// TODO: have buffer dynamically expand
-	char ** tokenArr = malloc(sizeof(char) * 120);
+void getArgs(char * input, char ** tokenArr, char ** ioArr, int * indexArr, int * cmdCount) {
 	// since the heap may be modified, we default redirects to NULL
 	// in case they are not assigned in the command
-	tokenArr[0] = NULL;
-	tokenArr[1] = NULL;
+	ioArr[0] = NULL;
+	ioArr[1] = NULL;
 
 	// by implementation getline() will result in \n terminated string
 	char delim[] = " \n";
 
 	// we iterate through all of the tokens and put them in the 2-d array
 	char * token = strtok(input, delim);
-	int argIndex = 2; // first two elements are reserved for in and out redirect
+	int cmdStartIndex = 0;
+	int cmdIndex = 0;
+	int argIndex = 0;
 	int type = 0;
 	while (token != NULL ) {
+		// next token STDIN
 		if ('<' == *token) {
 			type = 1;
 
+		// next token STDOUT
 		} else if ('>' == *token) {
 			type = 2;
 
+		// end of command
+		} else if ('|' == *token) {
+			indexArr[cmdIndex] = cmdStartIndex;
+			// we currently have only accessed the token at the previous index
+			indexArr[cmdIndex + 1] = argIndex - 1;
+			cmdStartIndex = argIndex;
+			cmdIndex = cmdIndex + 2;
+
+		// normal token
 		} else if (type == 0) {
 			tokenArr[argIndex++] = token;
 
+		// STDIN
 		} else if (type == 1) {
-			tokenArr[0] = token;
+			ioArr[0] = token;
 			type = 0;
 
+		// STDOUT
 		} else if (type == 2) {
-			tokenArr[1] = token;
+			ioArr[1] = token;
 			type = 0;
 
 		}
@@ -129,16 +151,24 @@ char ** getArgs(char * input) {
 		token = strtok(NULL, delim);
 	}
 
-	return tokenArr;
+	indexArr[cmdIndex] = cmdStartIndex;
+	// we currently have only accessed the token at the previous index
+	indexArr[cmdIndex + 1] = argIndex - 1;
+	cmdIndex = cmdIndex + 2;
+	* cmdCount = cmdIndex / 2;
 }
 
 
 /* Function attempts to execute user inputted command
 */
 
-void execArgs(char ** argsArr) {
-	char * firstArg = argsArr[2];
+void execArgs(char ** argsArr, char ** ioArr, int * indexArr, int cmdCount) {
+	// no commands given
+	if (indexArr[1] == -1) {
+		return;
+	}
 
+	char * firstArg = argsArr[0];
 	if (strcmp(firstArg, "cd") == 0) {
 		cd(argsArr);
 
@@ -146,7 +176,7 @@ void execArgs(char ** argsArr) {
 		exit(0);
 
 	} else { // we attempt an exec call of the arguments
-		execChildArgs(argsArr);
+		execChildArgs(argsArr, ioArr, indexArr, cmdCount);
 
 	}
 
@@ -216,9 +246,9 @@ char * getAbsolutePath(char * path) {
 */
 
 void cd(char ** argsArr) {
-	if (argsArr[3] != NULL) {
+	if (argsArr[1] != NULL) {
 		char * path;
-		path = getAbsolutePath(argsArr[3]);
+		path = getAbsolutePath(argsArr[1]);
 		if ( chdir(path) == -1 ) {
 			printf("Unable to change directory.\n");
 
