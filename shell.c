@@ -16,6 +16,7 @@
 	https://man7.org/linux/man-pages/man3/fopen.3.html,
 	https://man7.org/linux/man-pages/man2/dup.2.html,
 	https://man7.org/linux/man-pages/man2/open.2.html,
+	https://man7.org/linux/man-pages/man2/pipe.2.html,
 	https://linux.die.net/man/3/strcat,
 	https://linux.die.net/man/3/strcmp
 */
@@ -187,36 +188,97 @@ void execArgs(char ** argsArr, char ** ioArr, int * indexArr, int cmdCount) {
 	exec call exists for
 */
 
-void execChildArgs(char ** argsArr) {
+void execChildArgs(char ** argsArr, char ** ioArr, int * indexArr, int cmdCount) {
+	// exec variables
+	char * execFile;
+	int startIndex;
+	int endIndex;
+
+	// child variables
 	pid_t child;
 	int status;
-	child = fork();
 
-	if (child == 0) { // child process
-		// child I/0 redirection
-		int redirIndex;
-		char * redirFd;
-		for (redirIndex = 0; redirIndex < 2; redirIndex++) {
-			if ( (redirFd = argsArr[redirIndex]) != NULL ) {
-				int fd = open(argsArr[redirIndex], O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
-				dup2(fd, redirIndex);
-				close(fd);
-			}
+	// i/o redirection variable
+	char * redirFd;
+	int iofd;
+
+	// piping variables
+	int pipefdSize = cmdCount * 2;
+	int pipefd[pipefdSize];
+	int tempIndex;
+
+	for (tempIndex = 0; tempIndex < cmdCount; tempIndex++) {
+		if ( pipe(pipefd + tempIndex * 2) == -1 ) {
+			exit(1);
 		}
+	}
 
-		// since we are not addressing the file by filepath we use 'p'
-		// since the arguments are in the form of an array we use 'v'
-		// the first two elements are possible redirection, so the command is second element
-		// and for the second argument we want all elements except first two
-		execvp(argsArr[2], argsArr+2);
+	int cmdIndex;
+	for (cmdIndex = 1; cmdIndex <= cmdCount; cmdIndex++) {
+		child = fork();
+		if (child == 0) { // is child process
+			// when we have a STDIN redirect and first command to execute
+			if ( (cmdIndex == 1) && ((redirFd = ioArr[0]) != NULL) ) {
+				iofd = open(redirFd, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+				dup2(iofd, 0);
+				close(iofd);
 
-		// we only return upon failure of exec
-		printf("Command not found.\nExecution unsuccessful.\n");
-		exit(0);
+			// when not first command
+			} else if (cmdIndex > 1) {
+				if (dup2(pipefd[(cmdIndex - 2) * 2], 0) == -1) {
+					exit(1);
+				}
+			} // end of if/else
 
-	} else { // parent process
-		waitpid(child, &status, 0);
+			// when we have a STDOUT redirect and last command to execute
+			if ( (cmdIndex == cmdCount) && ((redirFd = ioArr[1]) != NULL) ) {
+				iofd = open(redirFd, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+				dup2(iofd, 1);
+				close(iofd);
 
+			// when not last command
+			} else if (cmdIndex < cmdCount) {
+				if (dup2(pipefd[(cmdIndex * 2) - 1], 1) == -1) {
+					exit(1);
+				}
+			} // end of if/else
+
+			// close all pipes
+			for (tempIndex = 0; tempIndex < pipefdSize; tempIndex++) {
+				close(pipefd[tempIndex]);
+			}
+
+			// generate proper exec arguments
+			startIndex = indexArr[(cmdIndex - 1) * 2];
+			endIndex = indexArr[(cmdIndex * 2) - 1];
+			execFile = argsArr[startIndex];
+			argsArr[endIndex + 1] = NULL; // array elements will not be read after the last relevant one
+
+			// since we are not addressing the file by filepath we use 'p'
+			// since the arguments are in the form of an array we use 'v'
+			// the command is the first element
+			// and for the second argument we want all elements
+			execvp(execFile, argsArr+startIndex);
+
+			// we only return upon failure of exec
+			printf("Command not found.\nExecution unsuccessful.\n");
+			exit(0);
+
+		} else if (child == -1) { 
+			exit(1);
+
+		} // end of outer if/else
+
+	} // end of for
+
+	// close pipes in parent
+	for (tempIndex = 0; tempIndex < pipefdSize; tempIndex++) {
+		close(pipefd[tempIndex]);
+	}
+
+	// wait for children
+	for (tempIndex = 0; tempIndex < cmdCount; tempIndex++) {
+		wait(&status);
 	}
 
 }
