@@ -220,7 +220,9 @@ void execChildArgs(char ** argsArr, char ** ioArr, int * indexArr, int cmdCount)
 			// when we have a STDIN redirect and first command to execute
 			if ( (cmdIndex == 1) && ((redirFd = ioArr[0]) != NULL) ) {
 				iofd = open(redirFd, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
-				dup2(iofd, 0);
+				if (dup2(iofd, 0) == -1) {
+					exit(1);
+				}
 				close(iofd);
 
 			// when not first command
@@ -233,7 +235,9 @@ void execChildArgs(char ** argsArr, char ** ioArr, int * indexArr, int cmdCount)
 			// when we have a STDOUT redirect and last command to execute
 			if ( (cmdIndex == cmdCount) && ((redirFd = ioArr[1]) != NULL) ) {
 				iofd = open(redirFd, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
-				dup2(iofd, 1);
+				if (dup2(iofd, 1) == -1) {
+					exit(1);
+				}
 				close(iofd);
 
 			// when not last command
