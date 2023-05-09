@@ -17,6 +17,7 @@
 	https://man7.org/linux/man-pages/man2/dup.2.html,
 	https://man7.org/linux/man-pages/man2/open.2.html,
 	https://man7.org/linux/man-pages/man2/pipe.2.html,
+	https://man7.org/linux/man-pages/man2/mkdir.2.html,
 	https://linux.die.net/man/3/strcat,
 	https://linux.die.net/man/3/strcmp
 */
@@ -35,6 +36,7 @@
 #include <sys/wait.h> // needed for waitpid()
 #include <unistd.h> // needed for execvp(), fork(), chdir(), dup2(), pipe(), write(), read()
 #include <fcntl.h> // needed for open()
+#include <sys/stat.h> // needed for mkdir()
 
 
 /* Prototypes */
@@ -42,8 +44,11 @@ char * getInput(void);
 void getArgs(char *, char **, char **, int *, int *);
 void execArgs(char **, char **, int *, int);
 void execChildArgs(char **, char **, int *, int);
-void cd(char **);
+void cd(char **, int);
 char * getAbsolutePath(char *);
+void pwd(void);
+void echo(char **, int, int);
+void mkDir(char **, int);
 
 
 int main(void) {
@@ -311,10 +316,11 @@ char * getAbsolutePath(char * path) {
 /* Function that changes process cwd
 */
 
-void cd(char ** argsArr) {
-	if (argsArr[1] != NULL) {
+void cd(char ** argsArr, int startIndex) {
+	int dirIndex = startIndex + 1;
+	if (argsArr[dirIndex] != NULL) {
 		char * path;
-		path = getAbsolutePath(argsArr[1]);
+		path = getAbsolutePath(argsArr[dirIndex]);
 		if ( chdir(path) == -1 ) {
 			printf("Unable to change directory.\n");
 
@@ -327,4 +333,56 @@ void cd(char ** argsArr) {
 		printf("Unable to change directory.\n");
 
 	}
+}
+
+
+/* Function that prints the current working directory
+*/
+
+void pwd(void) {
+	char cwd[120];
+	getcwd(cwd, sizeof(cwd));
+	printf("%s\n", cwd);
+
+}
+
+
+/* Function that prints out strings succeeding the command directive
+*/
+
+void echo(char ** argsArr, int startIndex, int endIndex) {
+	int tempIndex;
+	for (tempIndex = startIndex+1; tempIndex <= endIndex; tempIndex++) {
+		printf("%s", *(argsArr+tempIndex));
+
+		if (tempIndex < endIndex) {
+			printf("%c", ' ');
+		}
+	}
+	printf("%c", '\n');
+
+}
+
+
+/* Function that creates a subdirectory within the current directory
+*/
+
+void mkDir(char ** argsArr, int startIndex) {
+	int dirIndex = startIndex + 1;
+	if (argsArr[dirIndex] != NULL) {
+		char * path;
+		path = getAbsolutePath(argsArr[dirIndex]);
+		if ( mkdir(path, 0777) == -1 ) {
+			printf("Unable to create directory.\n");
+
+		} else {
+			printf("Directory created.\n");
+
+		}
+
+	} else {
+		printf("Unable to create directory.\n");
+
+	}
+
 }
