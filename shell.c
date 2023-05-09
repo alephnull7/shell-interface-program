@@ -1,6 +1,6 @@
 /* Programmer: Gregory Smith
-	Date: 05/03/2023
-	Program: PA4
+	Date: 05/08/2023
+	Program: PS5
 */
 
 /* References:
@@ -17,6 +17,7 @@
 	https://man7.org/linux/man-pages/man2/dup.2.html,
 	https://man7.org/linux/man-pages/man2/open.2.html,
 	https://man7.org/linux/man-pages/man2/pipe.2.html,
+	https://man7.org/linux/man-pages/man2/mkdir.2.html,
 	https://linux.die.net/man/3/strcat,
 	https://linux.die.net/man/3/strcmp
 */
@@ -35,15 +36,19 @@
 #include <sys/wait.h> // needed for waitpid()
 #include <unistd.h> // needed for execvp(), fork(), chdir(), dup2(), pipe(), write(), read()
 #include <fcntl.h> // needed for open()
+#include <sys/stat.h> // needed for mkdir()
 
 
 /* Prototypes */
 char * getInput(void);
 void getArgs(char *, char **, char **, int *, int *);
 void execArgs(char **, char **, int *, int);
-void execChildArgs(char **, char **, int *, int);
-void cd(char **);
+void execChildArgs(char **, char *, int, int, char **);
+void cd(char **, int);
 char * getAbsolutePath(char *);
+void pwd(void);
+void echo(char **, int, int);
+void mkDir(char **, int);
 
 
 int main(void) {
@@ -160,35 +165,22 @@ void getArgs(char * input, char ** tokenArr, char ** ioArr, int * indexArr, int 
 }
 
 
-/* Function attempts to execute user inputted command
+/* Function attempts to execute user inputted commands
 */
 
 void execArgs(char ** argsArr, char ** ioArr, int * indexArr, int cmdCount) {
 	// no commands given
 	if (indexArr[1] == -1) {
 		return;
-	}
 
-	char * firstArg = argsArr[0];
-	if (strcmp(firstArg, "cd") == 0) {
-		cd(argsArr);
+	// no need to create subshells
+	// allows "exit" and "cd" to work as expected
+	} else if (cmdCount == 1) {
+		execChildArgs(argsArr, argsArr[0], indexArr[0], indexArr[1], ioArr);
+		return;
 
-	} else if (strcmp(firstArg, "exit") == 0) {
-		exit(0);
+	} // end of if/else
 
-	} else { // we attempt an exec call of the arguments
-		execChildArgs(argsArr, ioArr, indexArr, cmdCount);
-
-	}
-
-}
-
-
-/* Function attempts to execute commands for which a corresponding
-	exec call exists for
-*/
-
-void execChildArgs(char ** argsArr, char ** ioArr, int * indexArr, int cmdCount) {
 	// exec variables
 	char * execFile;
 	int startIndex;
@@ -207,6 +199,7 @@ void execChildArgs(char ** argsArr, char ** ioArr, int * indexArr, int cmdCount)
 	int pipefd[pipefdSize];
 	int tempIndex;
 
+	// created all needed pipes
 	for (tempIndex = 0; tempIndex < cmdCount; tempIndex++) {
 		if ( pipe(pipefd + tempIndex * 2) == -1 ) {
 			exit(1);
@@ -219,7 +212,7 @@ void execChildArgs(char ** argsArr, char ** ioArr, int * indexArr, int cmdCount)
 		if (child == 0) { // is child process
 			// when we have a STDIN redirect and first command to execute
 			if ( (cmdIndex == 1) && ((redirFd = ioArr[0]) != NULL) ) {
-				iofd = open(redirFd, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+				iofd = open(redirFd, O_RDONLY | O_CREAT, S_IRUSR | S_IWUSR);
 				if (dup2(iofd, 0) == -1) {
 					exit(1);
 				}
@@ -234,7 +227,7 @@ void execChildArgs(char ** argsArr, char ** ioArr, int * indexArr, int cmdCount)
 
 			// when we have a STDOUT redirect and last command to execute
 			if ( (cmdIndex == cmdCount) && ((redirFd = ioArr[1]) != NULL) ) {
-				iofd = open(redirFd, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+				iofd = open(redirFd, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR);
 				if (dup2(iofd, 1) == -1) {
 					exit(1);
 				}
@@ -258,14 +251,8 @@ void execChildArgs(char ** argsArr, char ** ioArr, int * indexArr, int cmdCount)
 			execFile = argsArr[startIndex];
 			argsArr[endIndex + 1] = NULL; // array elements will not be read after the last relevant one
 
-			// since we are not addressing the file by filepath we use 'p'
-			// since the arguments are in the form of an array we use 'v'
-			// the command is the first element
-			// and for the second argument we want all elements
-			execvp(execFile, argsArr+startIndex);
-
 			// we only return upon failure of exec
-			printf("Command not found.\nExecution unsuccessful.\n");
+			execChildArgs(argsArr, execFile, startIndex, endIndex, NULL);
 			exit(0);
 
 		} else if (child == -1) { 
@@ -283,6 +270,84 @@ void execChildArgs(char ** argsArr, char ** ioArr, int * indexArr, int cmdCount)
 	// wait for children
 	for (tempIndex = 0; tempIndex < cmdCount; tempIndex++) {
 		wait(&status);
+	}
+
+}
+
+
+/* Function attempts to execute commands for which a corresponding
+	exec call exists for
+*/
+
+void execChildArgs(char ** argsArr, char * execFile, int startIndex, int endIndex, char ** ioArr) {
+	// printf("%s\n", execFile);
+	if (strcmp(execFile, "cd") == 0) {
+		cd(argsArr, startIndex);
+
+	} else if (strcmp(execFile, "pwd") == 0) {
+		pwd();
+
+	} else if (strcmp(execFile, "echo") == 0) {
+		echo(argsArr, startIndex, endIndex);
+
+	} else if (strcmp(execFile, "mkdir") == 0) {
+		mkDir(argsArr, startIndex);
+
+	} else if (strcmp(execFile, "exit") == 0) {
+		exit(0);
+
+	// in the single command case this is not a child process,
+	// so we need to fork since exec() replaces process
+	} else if (ioArr != NULL) {
+		pid_t child;
+		int status;
+
+		child = fork();
+		if (child == 0) {
+			// no piping taking place so direct
+			// child I/0 redirection performed
+			char * redirFd;
+			int iofd;
+
+			if ( (redirFd = ioArr[0]) != NULL ) {
+				iofd = open(redirFd, O_RDONLY | O_CREAT, S_IRUSR | S_IWUSR);
+				if (dup2(iofd, 0) == -1) {
+					exit(1);
+				}
+				close(iofd);
+			}
+
+			if ( (redirFd = ioArr[1]) != NULL ) {
+				iofd = open(redirFd, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR);
+				if (dup2(iofd, 1) == -1) {
+					exit(1);
+				}
+				close(iofd);
+			}
+
+			execvp(execFile, argsArr+startIndex);
+			// we only return upon failure of exec
+			printf("Command not found.\nExecution unsuccessful.\n");
+			exit(0);
+
+		} else if (child == -1) { 
+			exit(1);
+
+		} else {
+			wait(&status);
+
+		}
+
+	// we attempt an exec call of the arguments without forking
+	} else {
+		// since we are not addressing the file by filepath we use 'p'
+		// since the arguments are in the form of an array we use 'v'
+		// the command is the first element
+		// and for the second argument we want all elements
+		execvp(execFile, argsArr+startIndex);
+
+		// we only return upon failure of exec
+		printf("Command not found.\nExecution unsuccessful.\n");
 	}
 
 }
@@ -311,10 +376,11 @@ char * getAbsolutePath(char * path) {
 /* Function that changes process cwd
 */
 
-void cd(char ** argsArr) {
-	if (argsArr[1] != NULL) {
+void cd(char ** argsArr, int startIndex) {
+	int dirIndex = startIndex + 1;
+	if (argsArr[dirIndex] != NULL) {
 		char * path;
-		path = getAbsolutePath(argsArr[1]);
+		path = getAbsolutePath(argsArr[dirIndex]);
 		if ( chdir(path) == -1 ) {
 			printf("Unable to change directory.\n");
 
@@ -327,4 +393,56 @@ void cd(char ** argsArr) {
 		printf("Unable to change directory.\n");
 
 	}
+}
+
+
+/* Function that prints the current working directory
+*/
+
+void pwd(void) {
+	char cwd[120];
+	getcwd(cwd, sizeof(cwd));
+	printf("%s\n", cwd);
+
+}
+
+
+/* Function that prints out strings succeeding the command directive
+*/
+
+void echo(char ** argsArr, int startIndex, int endIndex) {
+	int tempIndex;
+	for (tempIndex = startIndex+1; tempIndex <= endIndex; tempIndex++) {
+		printf("%s", *(argsArr+tempIndex));
+
+		if (tempIndex < endIndex) {
+			printf("%c", ' ');
+		}
+	}
+	printf("%c", '\n');
+
+}
+
+
+/* Function that creates a subdirectory within the current directory
+*/
+
+void mkDir(char ** argsArr, int startIndex) {
+	int dirIndex = startIndex + 1;
+	if (argsArr[dirIndex] != NULL) {
+		char * path;
+		path = getAbsolutePath(argsArr[dirIndex]);
+		if ( mkdir(path, 0777) == -1 ) {
+			printf("Unable to create directory.\n");
+
+		} else {
+			printf("Directory created.\n");
+
+		}
+
+	} else {
+		printf("Unable to create directory.\n");
+
+	}
+
 }
